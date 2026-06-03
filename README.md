@@ -115,3 +115,42 @@ lib/
 types/
  └── index.ts           # Typescript typings directory
 ```
+
+---
+
+## 🏛️ Architectural Choices
+
+1. **Aesthetics & Theme**: Built with a strict **dark-mode-only** theme using Tailwind v4 CSS variables. The UI references premium design systems (like Vercel and Stripe) utilizing glassmorphic background blurs (`backdrop-filter`), thin semi-translucent borders (`rgba(255,255,255,0.05)`), and moving radial-gradients (`GradientMesh.tsx`) to create an atmospheric, high-end feel.
+2. **Dynamic Bento Layout**: Structured as a 4-column Bento grid on desktop that collapses responsively to 2 columns on tablet and 1 column on mobile.
+3. **GPU-Accelerated Animations**: Cards implement Framer Motion hover animations focusing purely on `scale` and `y-translation` while utilizing `will-change: transform; transform: translateZ(0);` (GPU layer promotion). This guarantees a constant 60fps rendering speed and zero layout shifts.
+
+---
+
+## 🌗 Server / Client Component Split
+
+To satisfy the strict security rule **"DO NOT FETCH COURSE DATA ON CLIENT SIDE"** and enable snappy interactive states, the data-fetching and interactive nodes were split:
+
+1. **Server Component Context (`app/page.tsx`)**:
+   - Acts as the secure entry page.
+   - Instantiates the Supabase server client using `@supabase/ssr` cookies.
+   - Fetches the active courses database list asynchronously. Since this happens server-side, database connection logs, credentials, and API paths remain private.
+   - Passes the queried data directly to the client wrapper as page props.
+
+2. **Client Component Context (`DashboardWrapper.tsx`, Cards, Sidebar)**:
+   - Houses all interactive elements that require user events or state tracking (like active sidebar tabs, collapsible panel animations, GitHub hover tooltips, and spring progress loaders).
+   - Prevents database sync delays by immediately updating UI panels client-side while rendering the fetched database telemetry.
+
+---
+
+## ⚡ Challenges Faced & Resolutions
+
+- **Challenge: Next.js 15 Cookie Async Breaking Changes**:
+  - *Problem*: In Next.js 15, headers and cookie methods (like `cookies()`) return Promises. Standard cookie retrieval methods from Next.js 14 trigger runtime errors.
+  - *Resolution*: Updated `lib/supabase/server.ts` to asynchronously await the cookie store: `const cookieStore = await cookies();` before passing it to the `@supabase/ssr` client setup.
+- **Challenge: React 19 Client Hydration Mismatches**:
+  - *Problem*: Thermic grids (like the GitHub heatmap dates) or initial motion calculations depend on client-side viewport sizes, causing mismatch warnings when pre-rendering HTML on the server.
+  - *Resolution*: Implemented a custom `useMounted` hook to ensure client-only motion features and tooltip metrics defer rendering until the page is fully hydrated.
+- **Challenge: Local Environment Variable Compilation Safety**:
+  - *Problem*: If standard build checks run during automated deployment pipelines without a live database URL, the project compilation crashes.
+  - *Resolution*: Implemented a fallback data-layer loop in `app/page.tsx` that serves structured mock data if default credentials (`mockproject.supabase.co`) are present, ensuring seamless static page generation during build pipelines.
+
